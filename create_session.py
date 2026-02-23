@@ -31,6 +31,7 @@ def create_session(
     prompt: str,
     display_name: str = "",
     repos: list | None = None,
+    workflow: dict | None = None,
     labels: dict | None = None,
     env_vars: dict | None = None,
     timeout: int = 30,
@@ -46,6 +47,8 @@ def create_session(
         body["displayName"] = display_name
     if repos:
         body["repos"] = repos
+    if workflow:
+        body["activeWorkflow"] = workflow
     if labels:
         body["labels"] = labels
     if env_vars:
@@ -76,41 +79,6 @@ def create_session(
     except requests.RequestException as e:
         logger.error(f"Failed to create session: {e}")
         return None
-
-
-def set_workflow(
-    api_url: str,
-    api_token: str,
-    project: str,
-    session_name: str,
-    workflow: dict,
-    verify_ssl: bool = True,
-) -> bool:
-    """POST to set the active workflow on a session."""
-    url = (
-        f"{api_url.rstrip('/')}/projects/{project}"
-        f"/agentic-sessions/{session_name}/workflow"
-    )
-    try:
-        resp = requests.post(
-            url,
-            headers={
-                "Authorization": f"Bearer {api_token}",
-                "Content-Type": "application/json",
-            },
-            json=workflow,
-            timeout=15,
-            verify=verify_ssl,
-        )
-        resp.raise_for_status()
-        logger.info(
-            f"Workflow set on session {session_name}: "
-            f"gitUrl={workflow.get('gitUrl', '?')}"
-        )
-        return True
-    except requests.RequestException as e:
-        logger.error(f"Failed to set workflow: {e}")
-        return False
 
 
 def poll_session(
@@ -183,11 +151,11 @@ def main():
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--display-name", default="")
     parser.add_argument("--repos", default="")
+    parser.add_argument("--workflow", default="")
     parser.add_argument("--labels", default="")
     parser.add_argument("--env-vars", default="")
     parser.add_argument("--timeout", type=int, default=30)
     parser.add_argument("--model", default="")
-    parser.add_argument("--workflow", default="")
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--poll-interval", type=int, default=15)
     parser.add_argument("--no-verify-ssl", action="store_true")
@@ -201,9 +169,9 @@ def main():
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     repos = json.loads(args.repos) if args.repos else None
+    workflow = json.loads(args.workflow) if args.workflow else None
     labels = json.loads(args.labels) if args.labels else None
     env_vars = json.loads(args.env_vars) if args.env_vars else None
-    workflow = json.loads(args.workflow) if args.workflow else None
 
     result = create_session(
         api_url=args.api_url,
@@ -212,6 +180,7 @@ def main():
         prompt=args.prompt,
         display_name=args.display_name,
         repos=repos,
+        workflow=workflow,
         labels=labels,
         env_vars=env_vars,
         timeout=args.timeout,
@@ -231,16 +200,6 @@ def main():
 
     session_name = result.get("name", "")
     session_uid = result.get("uid", "")
-
-    if workflow and session_name:
-        set_workflow(
-            api_url=args.api_url,
-            api_token=args.api_token,
-            project=args.project,
-            session_name=session_name,
-            workflow=workflow,
-            verify_ssl=verify_ssl,
-        )
 
     output = {
         "session_name": session_name,
