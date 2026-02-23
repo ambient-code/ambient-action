@@ -43,6 +43,10 @@ inputs:
     description: 'Model override (e.g. claude-sonnet-4-20250514)'
     required: false
     default: ''
+  workflow:
+    description: 'JSON workflow object, e.g. {"gitUrl": "https://...", "branch": "main", "path": "workflows/my-wf"}'
+    required: false
+    default: ''
   wait:
     description: 'Wait for session completion before exiting'
     required: false
@@ -91,6 +95,7 @@ runs:
         INPUT_ENV_VARS: ${{ inputs.environment-variables }}
         INPUT_TIMEOUT: ${{ inputs.timeout }}
         INPUT_MODEL: ${{ inputs.model }}
+        INPUT_WORKFLOW: ${{ inputs.workflow }}
         INPUT_WAIT: ${{ inputs.wait }}
         INPUT_POLL_INTERVAL: ${{ inputs.poll-interval }}
         INPUT_NO_VERIFY_SSL: ${{ inputs.no-verify-ssl }}
@@ -120,6 +125,9 @@ runs:
         fi
         if [ -n "$INPUT_MODEL" ]; then
           CMD="$CMD --model \"$INPUT_MODEL\""
+        fi
+        if [ -n "$INPUT_WORKFLOW" ]; then
+          CMD="$CMD --workflow '$INPUT_WORKFLOW'"
         fi
         if [ "$INPUT_WAIT" = "true" ]; then
           CMD="$CMD --wait"

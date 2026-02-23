@@ -39,6 +39,19 @@ Create a session and wait for results:
     echo "Result: ${{ steps.session.outputs.session-result }}"
 ```
 
+### With a workflow
+
+```yaml
+- uses: ambient-code/ambient-action@v2
+  with:
+    api-url: ${{ secrets.AMBIENT_API_URL }}
+    api-token: ${{ secrets.AMBIENT_BOT_TOKEN }}
+    project: my-project
+    prompt: "Fix the login bug described in issue #42"
+    repos: '[{"url": "https://github.com/org/app", "branch": "main", "autoPush": true}]'
+    workflow: '{"gitUrl": "https://github.com/org/workflows", "branch": "main", "path": "workflows/bug-fix"}'
+```
+
 ### Triggered from an issue comment
 
 ```yaml
@@ -99,6 +112,7 @@ steps:
 | `environment-variables` | No | - | JSON object of env vars for the runner |
 | `timeout` | No | `30` | Session timeout in minutes |
 | `model` | No | - | Model override |
+| `workflow` | No | - | JSON workflow object (see below) |
 | `wait` | No | `false` | Wait for session completion |
 | `poll-interval` | No | `15` | Seconds between polls when waiting |
 | `no-verify-ssl` | No | `false` | Disable SSL cert verification |
@@ -113,6 +127,16 @@ steps:
     "autoPush": true
   }
 ]
+```
+
+### `workflow` format
+
+```json
+{
+  "gitUrl": "https://github.com/org/workflows",
+  "branch": "main",
+  "path": "workflows/bug-fix"
+}
 ```
 
 ## Outputs
