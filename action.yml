@@ -1,0 +1,55 @@
+name: 'Ambient Feedback Loop'
+description: 'Query Langfuse for agent corrections and create Ambient Code Platform improvement sessions'
+author: 'Ambient Code'
+
+branding:
+  icon: 'refresh-cw'
+  color: 'purple'
+
+inputs:
+  langfuse-host:
+    description: 'Langfuse instance URL'
+    required: true
+  langfuse-public-key:
+    description: 'Langfuse public key'
+    required: true
+  langfuse-secret-key:
+    description: 'Langfuse secret key'
+    required: true
+  api-url:
+    description: 'Ambient Code Platform backend API URL'
+    required: true
+  api-token:
+    description: 'Bot user bearer token for the Ambient API'
+    required: true
+  project:
+    description: 'Ambient project/namespace name'
+    required: true
+  since-days:
+    description: 'Number of days to look back for corrections'
+    required: false
+    default: '7'
+  min-corrections:
+    description: 'Minimum corrections per group to trigger an improvement session'
+    required: false
+    default: '2'
+  dry-run:
+    description: 'Query and report without creating sessions'
+    required: false
+    default: 'false'
+  no-verify-ssl:
+    description: 'Disable SSL certificate verification (for self-signed certs)'
+    required: false
+    default: 'false'
+
+outputs:
+  corrections-found:
+    description: 'Total number of corrections fetched from Langfuse'
+  sessions-created:
+    description: 'Number of improvement sessions created'
+  groups-json:
+    description: 'JSON array of grouped correction summaries'
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
