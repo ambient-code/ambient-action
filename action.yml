@@ -1,21 +1,12 @@
-name: 'Ambient Feedback Loop'
-description: 'Query Langfuse for agent corrections and create Ambient Code Platform improvement sessions'
+name: 'Ambient Action'
+description: 'Create sessions on the Ambient Code Platform from any GitHub workflow'
 author: 'Ambient Code'
 
 branding:
-  icon: 'refresh-cw'
+  icon: 'play-circle'
   color: 'purple'
 
 inputs:
-  langfuse-host:
-    description: 'Langfuse instance URL'
-    required: true
-  langfuse-public-key:
-    description: 'Langfuse public key'
-    required: true
-  langfuse-secret-key:
-    description: 'Langfuse secret key'
-    required: true
   api-url:
     description: 'Ambient Code Platform backend API URL'
     required: true
@@ -25,30 +16,55 @@ inputs:
   project:
     description: 'Ambient project/namespace name'
     required: true
-  since-days:
-    description: 'Number of days to look back for corrections'
+  prompt:
+    description: 'Initial prompt for the session'
+    required: true
+  display-name:
+    description: 'Human-readable session display name'
     required: false
-    default: '7'
-  min-corrections:
-    description: 'Minimum corrections per group to trigger an improvement session'
+    default: ''
+  repos:
+    description: 'JSON array of repos, e.g. [{"url": "...", "branch": "main", "autoPush": true}]'
     required: false
-    default: '2'
-  dry-run:
-    description: 'Query and report without creating sessions'
+    default: ''
+  labels:
+    description: 'JSON object of labels for the session'
+    required: false
+    default: ''
+  environment-variables:
+    description: 'JSON object of environment variables to inject into the runner'
+    required: false
+    default: ''
+  timeout:
+    description: 'Session timeout in minutes'
+    required: false
+    default: '30'
+  model:
+    description: 'Model override (e.g. claude-sonnet-4-20250514)'
+    required: false
+    default: ''
+  wait:
+    description: 'Wait for session completion before exiting'
     required: false
     default: 'false'
+  poll-interval:
+    description: 'Seconds between status polls when waiting'
+    required: false
+    default: '15'
   no-verify-ssl:
     description: 'Disable SSL certificate verification (for self-signed certs)'
     required: false
     default: 'false'
 
 outputs:
-  corrections-found:
-    description: 'Total number of corrections fetched from Langfuse'
-  sessions-created:
-    description: 'Number of improvement sessions created'
-  groups-json:
-    description: 'JSON array of grouped correction summaries'
+  session-name:
+    description: 'Created session name'
+  session-uid:
+    description: 'Created session UID'
+  session-phase:
+    description: 'Final session phase (only set when wait is true)'
+  session-result:
+    description: 'Session result text (only set when wait is true)'
 
 runs:
   using: 'docker'

@@ -1,121 +1,137 @@
-# Ambient Feedback Loop Action
+# Ambient Action
 
-A GitHub Action that queries [Langfuse](https://langfuse.com) for agent corrections logged during [Ambient Code Platform](https://github.com/ambient-code) sessions and automatically creates improvement sessions to fix recurring issues.
-
-## How It Works
-
-1. **Queries Langfuse** for `session-correction` scores logged by the platform's corrections MCP tool
-2. **Groups corrections** by target (workflow or repo) — repo corrections across different branches are merged into a single group
-3. **Creates improvement sessions** on the Ambient Code Platform that analyze the corrections and propose targeted changes to workflow instructions, CLAUDE.md, and pattern files
-
-Corrections can come from two sources:
-- **Human** — a user redirected the agent during a session
-- **Rubric** — a rubric evaluation flagged weak dimensions automatically
+A GitHub Action that creates sessions on the [Ambient Code Platform](https://github.com/ambient-code) from any workflow. Supports fire-and-forget and wait-for-completion modes.
 
 ## Usage
 
-### Basic (weekly schedule)
+### Fire-and-forget
+
+Create a session and continue immediately:
 
 ```yaml
-name: Feedback Loop
+- uses: ambient-code/ambient-action@v2
+  with:
+    api-url: ${{ secrets.AMBIENT_API_URL }}
+    api-token: ${{ secrets.AMBIENT_BOT_TOKEN }}
+    project: my-project
+    prompt: "Refactor the auth module to use JWT tokens"
+    repos: '[{"url": "https://github.com/org/app", "branch": "main", "autoPush": true}]'
+```
 
+### Wait for completion
+
+Create a session and wait for results:
+
+```yaml
+- uses: ambient-code/ambient-action@v2
+  id: session
+  with:
+    api-url: ${{ secrets.AMBIENT_API_URL }}
+    api-token: ${{ secrets.AMBIENT_BOT_TOKEN }}
+    project: my-project
+    prompt: "Add unit tests for the payment service"
+    repos: '[{"url": "https://github.com/org/app", "branch": "main"}]'
+    wait: 'true'
+    timeout: '60'
+
+- run: |
+    echo "Phase: ${{ steps.session.outputs.session-phase }}"
+    echo "Result: ${{ steps.session.outputs.session-result }}"
+```
+
+### Triggered from an issue comment
+
+```yaml
 on:
-  schedule:
-    - cron: '0 9 * * 1'  # Weekly on Monday at 9am UTC
-  workflow_dispatch:
+  issue_comment:
+    types: [created]
 
 jobs:
-  feedback-loop:
+  run:
+    if: contains(github.event.comment.body, '/ambient')
     runs-on: ubuntu-latest
     steps:
-      - name: Run feedback loop
-        uses: ambient-code/feedback-loop-action@v1
+      - uses: ambient-code/ambient-action@v2
         with:
-          langfuse-host: ${{ secrets.LANGFUSE_HOST }}
-          langfuse-public-key: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
-          langfuse-secret-key: ${{ secrets.LANGFUSE_SECRET_KEY }}
           api-url: ${{ secrets.AMBIENT_API_URL }}
           api-token: ${{ secrets.AMBIENT_BOT_TOKEN }}
-          project: ${{ secrets.AMBIENT_PROJECT }}
+          project: my-project
+          prompt: ${{ github.event.comment.body }}
+          display-name: "Issue #${{ github.event.issue.number }}"
 ```
 
-### With outputs
+### As part of a feedback loop
+
+Query Langfuse for corrections, then create improvement sessions:
 
 ```yaml
-- name: Run feedback loop
-  id: feedback
-  uses: ambient-code/feedback-loop-action@v1
-  with:
-    langfuse-host: ${{ secrets.LANGFUSE_HOST }}
-    langfuse-public-key: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
-    langfuse-secret-key: ${{ secrets.LANGFUSE_SECRET_KEY }}
-    api-url: ${{ secrets.AMBIENT_API_URL }}
-    api-token: ${{ secrets.AMBIENT_BOT_TOKEN }}
-    project: ${{ secrets.AMBIENT_PROJECT }}
+steps:
+  - uses: actions/checkout@v4
 
-- name: Report results
-  run: |
-    echo "Corrections found: ${{ steps.feedback.outputs.corrections-found }}"
-    echo "Sessions created: ${{ steps.feedback.outputs.sessions-created }}"
-```
+  - uses: actions/setup-python@v5
+    with:
+      python-version: '3.11'
 
-### Dry run (no sessions created)
+  - run: pip install -r scripts/feedback-loop/requirements.txt
 
-```yaml
-- uses: ambient-code/feedback-loop-action@v1
-  with:
-    langfuse-host: ${{ secrets.LANGFUSE_HOST }}
-    langfuse-public-key: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
-    langfuse-secret-key: ${{ secrets.LANGFUSE_SECRET_KEY }}
-    api-url: ${{ secrets.AMBIENT_API_URL }}
-    api-token: ${{ secrets.AMBIENT_BOT_TOKEN }}
-    project: ${{ secrets.AMBIENT_PROJECT }}
-    dry-run: 'true'
+  - name: Query corrections and create sessions
+    run: |
+      python scripts/feedback-loop/query_corrections.py \
+        --langfuse-host "${{ secrets.LANGFUSE_HOST }}" \
+        --langfuse-public-key "${{ secrets.LANGFUSE_PUBLIC_KEY }}" \
+        --langfuse-secret-key "${{ secrets.LANGFUSE_SECRET_KEY }}" \
+        --api-url "${{ secrets.AMBIENT_API_URL }}" \
+        --api-token "${{ secrets.AMBIENT_BOT_TOKEN }}" \
+        --project "${{ secrets.AMBIENT_PROJECT }}"
 ```
 
 ## Inputs
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `langfuse-host` | Yes | — | Langfuse instance URL |
-| `langfuse-public-key` | Yes | — | Langfuse public key |
-| `langfuse-secret-key` | Yes | — | Langfuse secret key |
-| `api-url` | Yes | — | Ambient Code Platform backend API URL |
-| `api-token` | Yes | — | Bot user bearer token for the Ambient API |
-| `project` | Yes | — | Ambient project/namespace name |
-| `since-days` | No | `7` | Number of days to look back for corrections |
-| `min-corrections` | No | `2` | Minimum corrections per group to trigger a session |
-| `dry-run` | No | `false` | Query and report without creating sessions |
-| `no-verify-ssl` | No | `false` | Disable SSL certificate verification |
+| `api-url` | Yes | - | Ambient Code Platform backend API URL |
+| `api-token` | Yes | - | Bot user bearer token |
+| `project` | Yes | - | Ambient project/namespace name |
+| `prompt` | Yes | - | Initial prompt for the session |
+| `display-name` | No | auto | Human-readable session name |
+| `repos` | No | - | JSON array of repos |
+| `labels` | No | - | JSON object of labels |
+| `environment-variables` | No | - | JSON object of env vars for the runner |
+| `timeout` | No | `30` | Session timeout in minutes |
+| `model` | No | - | Model override |
+| `wait` | No | `false` | Wait for session completion |
+| `poll-interval` | No | `15` | Seconds between polls when waiting |
+| `no-verify-ssl` | No | `false` | Disable SSL cert verification |
+
+### `repos` format
+
+```json
+[
+  {
+    "url": "https://github.com/org/repo",
+    "branch": "main",
+    "autoPush": true
+  }
+]
+```
 
 ## Outputs
 
 | Output | Description |
 |--------|-------------|
-| `corrections-found` | Total number of corrections fetched from Langfuse |
-| `sessions-created` | Number of improvement sessions created |
-| `groups-json` | JSON array of grouped correction summaries |
+| `session-name` | Created session name (always set) |
+| `session-uid` | Created session UID (always set) |
+| `session-phase` | Final phase - only when `wait: true` |
+| `session-result` | Result text - only when `wait: true` |
 
-### `groups-json` format
+### Session phases
 
-```json
-[
-  {
-    "target_type": "workflow",
-    "target_repo_url": "https://github.com/org/workflows",
-    "target_path": "workflows/bug-fix",
-    "total_count": 5,
-    "correction_type_counts": { "style": 3, "incomplete": 2 },
-    "source_counts": { "human": 3, "rubric": 2 }
-  }
-]
-```
-
-## How Corrections Are Grouped
-
-- **Workflow targets** are grouped by `(repo_url, branch, path)` — branch matters because different branches can have different workflow instructions
-- **Repo targets** are grouped by `(repo_url)` only — branch is ignored because sessions work on ephemeral feature branches while corrections apply to the repo as a whole
+- `Completed` - session finished successfully
+- `Error` - session encountered an error
+- `Timeout` - session exceeded the timeout
+- `Stopped` - session was manually stopped
+- `CreateFailed` - API call to create the session failed
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+Apache 2.0 - see [LICENSE](LICENSE).
