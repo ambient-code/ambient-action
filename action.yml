@@ -59,13 +59,94 @@ inputs:
 outputs:
   session-name:
     description: 'Created session name'
+    value: ${{ steps.run.outputs.session-name }}
   session-uid:
     description: 'Created session UID'
+    value: ${{ steps.run.outputs.session-uid }}
   session-phase:
     description: 'Final session phase (only set when wait is true)'
+    value: ${{ steps.run.outputs.session-phase }}
   session-result:
     description: 'Session result text (only set when wait is true)'
+    value: ${{ steps.run.outputs.session-result }}
 
 runs:
-  using: 'docker'
-  image: 'Dockerfile'
+  using: 'composite'
+  steps:
+    - name: Install dependencies
+      shell: bash
+      run: pip install --quiet requests>=2.31.0
+
+    - name: Create session
+      id: run
+      shell: bash
+      env:
+        INPUT_API_URL: ${{ inputs.api-url }}
+        INPUT_API_TOKEN: ${{ inputs.api-token }}
+        INPUT_PROJECT: ${{ inputs.project }}
+        INPUT_PROMPT: ${{ inputs.prompt }}
+        INPUT_DISPLAY_NAME: ${{ inputs.display-name }}
+        INPUT_REPOS: ${{ inputs.repos }}
+        INPUT_LABELS: ${{ inputs.labels }}
+        INPUT_ENV_VARS: ${{ inputs.environment-variables }}
+        INPUT_TIMEOUT: ${{ inputs.timeout }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_WAIT: ${{ inputs.wait }}
+        INPUT_POLL_INTERVAL: ${{ inputs.poll-interval }}
+        INPUT_NO_VERIFY_SSL: ${{ inputs.no-verify-ssl }}
+      run: |
+        OUTPUT_FILE="${RUNNER_TEMP}/ambient-session-output.json"
+
+        CMD="python3 ${GITHUB_ACTION_PATH}/create_session.py"
+        CMD="$CMD --api-url \"$INPUT_API_URL\""
+        CMD="$CMD --api-token \"$INPUT_API_TOKEN\""
+        CMD="$CMD --project \"$INPUT_PROJECT\""
+        CMD="$CMD --prompt \"$INPUT_PROMPT\""
+        CMD="$CMD --timeout \"${INPUT_TIMEOUT:-30}\""
+        CMD="$CMD --poll-interval \"${INPUT_POLL_INTERVAL:-15}\""
+        CMD="$CMD --output-file \"$OUTPUT_FILE\""
+
+        if [ -n "$INPUT_DISPLAY_NAME" ]; then
+          CMD="$CMD --display-name \"$INPUT_DISPLAY_NAME\""
+        fi
+        if [ -n "$INPUT_REPOS" ]; then
+          CMD="$CMD --repos '$INPUT_REPOS'"
+        fi
+        if [ -n "$INPUT_LABELS" ]; then
+          CMD="$CMD --labels '$INPUT_LABELS'"
+        fi
+        if [ -n "$INPUT_ENV_VARS" ]; then
+          CMD="$CMD --env-vars '$INPUT_ENV_VARS'"
+        fi
+        if [ -n "$INPUT_MODEL" ]; then
+          CMD="$CMD --model \"$INPUT_MODEL\""
+        fi
+        if [ "$INPUT_WAIT" = "true" ]; then
+          CMD="$CMD --wait"
+        fi
+        if [ "$INPUT_NO_VERIFY_SSL" = "true" ]; then
+          CMD="$CMD --no-verify-ssl"
+        fi
+
+        eval $CMD
+
+        if [ -f "$OUTPUT_FILE" ]; then
+          SESSION_NAME=$(python3 -c "import json; d=json.load(open('$OUTPUT_FILE')); print(d.get('session_name', ''))")
+          SESSION_UID=$(python3 -c "import json; d=json.load(open('$OUTPUT_FILE')); print(d.get('session_uid', ''))")
+          SESSION_PHASE=$(python3 -c "import json; d=json.load(open('$OUTPUT_FILE')); print(d.get('session_phase', ''))")
+          SESSION_RESULT=$(python3 -c "import json; d=json.load(open('$OUTPUT_FILE')); print(d.get('session_result', ''))")
+
+          echo "session-name=$SESSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "session-uid=$SESSION_UID" >> "$GITHUB_OUTPUT"
+          echo "session-phase=$SESSION_PHASE" >> "$GITHUB_OUTPUT"
+          {
+            echo "session-result<<GHEOF"
+            echo "$SESSION_RESULT"
+            echo "GHEOF"
+          } >> "$GITHUB_OUTPUT"
+        else
+          echo "session-name=" >> "$GITHUB_OUTPUT"
+          echo "session-uid=" >> "$GITHUB_OUTPUT"
+          echo "session-phase=CreateFailed" >> "$GITHUB_OUTPUT"
+          echo "session-result=" >> "$GITHUB_OUTPUT"
+        fi

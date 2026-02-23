@@ -132,6 +132,10 @@ steps:
 - `Stopped` - session was manually stopped
 - `CreateFailed` - API call to create the session failed
 
+## How It Works
+
+This is a [composite action](https://docs.github.com/en/actions/sharing-automations/creating-actions/creating-a-composite-action) that runs directly on the GitHub runner (no Docker container). It installs `requests` via pip, then runs `create_session.py` which calls the Ambient backend API.
+
 ## License
 
 Apache 2.0 - see [LICENSE](LICENSE).
