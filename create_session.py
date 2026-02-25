@@ -148,7 +148,8 @@ def main():
     parser.add_argument("--api-url", required=True)
     parser.add_argument("--api-token", required=True)
     parser.add_argument("--project", required=True)
-    parser.add_argument("--prompt", required=True)
+    parser.add_argument("--prompt", default="")
+    parser.add_argument("--prompt-file", default="", help="Read prompt from file (preferred over --prompt for multi-line content)")
     parser.add_argument("--display-name", default="")
     parser.add_argument("--repos", default="")
     parser.add_argument("--workflow", default="")
@@ -162,6 +163,19 @@ def main():
     parser.add_argument("--output-file", default="")
 
     args = parser.parse_args()
+
+    # Resolve prompt: --prompt-file takes precedence over --prompt
+    prompt = args.prompt
+    if args.prompt_file:
+        try:
+            with open(args.prompt_file) as f:
+                prompt = f.read()
+        except OSError as e:
+            logger.error(f"Failed to read prompt file: {e}")
+            sys.exit(1)
+    if not prompt:
+        parser.error("either --prompt or --prompt-file is required")
+
     verify_ssl = not args.no_verify_ssl
 
     if not verify_ssl:
@@ -177,7 +191,7 @@ def main():
         api_url=args.api_url,
         api_token=args.api_token,
         project=args.project,
-        prompt=args.prompt,
+        prompt=prompt,
         display_name=args.display_name,
         repos=repos,
         workflow=workflow,

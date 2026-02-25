@@ -102,41 +102,47 @@ runs:
       run: |
         OUTPUT_FILE="${RUNNER_TEMP}/ambient-session-output.json"
 
-        CMD="python3 ${GITHUB_ACTION_PATH}/create_session.py"
-        CMD="$CMD --api-url \"$INPUT_API_URL\""
-        CMD="$CMD --api-token \"$INPUT_API_TOKEN\""
-        CMD="$CMD --project \"$INPUT_PROJECT\""
-        CMD="$CMD --prompt \"$INPUT_PROMPT\""
-        CMD="$CMD --timeout \"${INPUT_TIMEOUT:-30}\""
-        CMD="$CMD --poll-interval \"${INPUT_POLL_INTERVAL:-15}\""
-        CMD="$CMD --output-file \"$OUTPUT_FILE\""
+        # Write prompt to a temp file to avoid shell interpretation of
+        # backticks, $, parentheses, quotes, etc. in multi-line prompts.
+        PROMPT_FILE="${RUNNER_TEMP}/ambient-prompt.txt"
+        printf '%s' "$INPUT_PROMPT" > "$PROMPT_FILE"
+
+        ARGS=(
+          --api-url "$INPUT_API_URL"
+          --api-token "$INPUT_API_TOKEN"
+          --project "$INPUT_PROJECT"
+          --prompt-file "$PROMPT_FILE"
+          --timeout "${INPUT_TIMEOUT:-30}"
+          --poll-interval "${INPUT_POLL_INTERVAL:-15}"
+          --output-file "$OUTPUT_FILE"
+        )
 
         if [ -n "$INPUT_DISPLAY_NAME" ]; then
-          CMD="$CMD --display-name \"$INPUT_DISPLAY_NAME\""
+          ARGS+=(--display-name "$INPUT_DISPLAY_NAME")
         fi
         if [ -n "$INPUT_REPOS" ]; then
-          CMD="$CMD --repos '$INPUT_REPOS'"
+          ARGS+=(--repos "$INPUT_REPOS")
         fi
         if [ -n "$INPUT_LABELS" ]; then
-          CMD="$CMD --labels '$INPUT_LABELS'"
+          ARGS+=(--labels "$INPUT_LABELS")
         fi
         if [ -n "$INPUT_ENV_VARS" ]; then
-          CMD="$CMD --env-vars '$INPUT_ENV_VARS'"
+          ARGS+=(--env-vars "$INPUT_ENV_VARS")
         fi
         if [ -n "$INPUT_MODEL" ]; then
-          CMD="$CMD --model \"$INPUT_MODEL\""
+          ARGS+=(--model "$INPUT_MODEL")
         fi
         if [ -n "$INPUT_WORKFLOW" ]; then
-          CMD="$CMD --workflow '$INPUT_WORKFLOW'"
+          ARGS+=(--workflow "$INPUT_WORKFLOW")
         fi
         if [ "$INPUT_WAIT" = "true" ]; then
-          CMD="$CMD --wait"
+          ARGS+=(--wait)
         fi
         if [ "$INPUT_NO_VERIFY_SSL" = "true" ]; then
-          CMD="$CMD --no-verify-ssl"
+          ARGS+=(--no-verify-ssl)
         fi
 
-        eval $CMD
+        python3 "${GITHUB_ACTION_PATH}/create_session.py" "${ARGS[@]}"
 
         if [ -f "$OUTPUT_FILE" ]; then
           SESSION_NAME=$(python3 -c "import json; d=json.load(open('$OUTPUT_FILE')); print(d.get('session_name', ''))")
