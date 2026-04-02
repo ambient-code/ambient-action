@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Create an Ambient Code Platform session via the backend API.
+Create an Ambient Code Platform session or send a message to an existing one.
 
-Supports two modes:
-- Fire-and-forget: create and exit immediately
-- Wait-for-completion: create then poll until terminal phase
+Supports three modes:
+- Create + fire-and-forget: create session and exit immediately
+- Create + wait: create session then poll until terminal phase
+- Send message: send a message to an existing session via AG-UI
 """
 
 import argparse
@@ -12,6 +13,7 @@ import json
 import logging
 import sys
 import time
+import uuid
 
 import requests
 
@@ -22,6 +24,48 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TERMINAL_PHASES = {"Completed", "Error", "Timeout", "Stopped", "Failed"}
+
+
+def send_message(
+    api_url: str,
+    api_token: str,
+    project: str,
+    session_name: str,
+    message: str,
+    verify_ssl: bool = True,
+) -> bool:
+    """Send a message to an existing session via AG-UI run endpoint."""
+    url = f"{api_url.rstrip('/')}/projects/{project}/agentic-sessions/{session_name}/agui/run"
+
+    body = {
+        "threadId": session_name,
+        "runId": str(uuid.uuid4()),
+        "messages": [
+            {
+                "id": str(uuid.uuid4()),
+                "role": "user",
+                "content": message,
+            }
+        ],
+    }
+
+    try:
+        resp = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {api_token}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+            timeout=30,
+            verify=verify_ssl,
+        )
+        resp.raise_for_status()
+        logger.info(f"Message sent to session {session_name}")
+        return True
+    except requests.RequestException as e:
+        logger.error(f"Failed to send message to session {session_name}: {e}")
+        return False
 
 
 def create_session(
@@ -143,13 +187,14 @@ def write_output(output_file: str, data: dict) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Create an Ambient Code Platform session."
+        description="Create an Ambient Code Platform session or send a message to an existing one."
     )
     parser.add_argument("--api-url", required=True)
     parser.add_argument("--api-token", required=True)
     parser.add_argument("--project", required=True)
     parser.add_argument("--prompt", default="")
     parser.add_argument("--prompt-file", default="", help="Read prompt from file (preferred over --prompt for multi-line content)")
+    parser.add_argument("--session-name", default="", help="Existing session to send a message to (skips creation)")
     parser.add_argument("--display-name", default="")
     parser.add_argument("--repos", default="")
     parser.add_argument("--workflow", default="")
@@ -183,6 +228,45 @@ def main():
         import urllib3
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+    # Mode: send message to existing session
+    if args.session_name:
+        success = send_message(
+            api_url=args.api_url,
+            api_token=args.api_token,
+            project=args.project,
+            session_name=args.session_name,
+            message=prompt,
+            verify_ssl=verify_ssl,
+        )
+
+        output = {
+            "session_name": args.session_name,
+            "session_uid": "",
+            "session_phase": "MessageSent" if success else "MessageFailed",
+            "session_result": "",
+        }
+
+        if not success:
+            write_output(args.output_file, output)
+            sys.exit(1)
+
+        if args.wait:
+            poll_result = poll_session(
+                api_url=args.api_url,
+                api_token=args.api_token,
+                project=args.project,
+                session_name=args.session_name,
+                poll_interval=args.poll_interval,
+                timeout_minutes=args.poll_timeout,
+                verify_ssl=verify_ssl,
+            )
+            output["session_phase"] = poll_result.get("phase", "")
+            output["session_result"] = poll_result.get("result", "")
+
+        write_output(args.output_file, output)
+        return
+
+    # Mode: create new session
     repos = json.loads(args.repos) if args.repos else None
     workflow = json.loads(args.workflow) if args.workflow else None
     labels = json.loads(args.labels) if args.labels else None

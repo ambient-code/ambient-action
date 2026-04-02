@@ -17,8 +17,12 @@ inputs:
     description: 'Ambient project/namespace name'
     required: true
   prompt:
-    description: 'Initial prompt for the session'
+    description: 'Initial prompt for the session, or message to send to existing session'
     required: true
+  session-name:
+    description: 'Existing session name to send a message to (skips session creation)'
+    required: false
+    default: ''
   display-name:
     description: 'Human-readable session display name'
     required: false
@@ -98,6 +102,7 @@ runs:
         INPUT_WORKFLOW: ${{ inputs.workflow }}
         INPUT_WAIT: ${{ inputs.wait }}
         INPUT_POLL_INTERVAL: ${{ inputs.poll-interval }}
+        INPUT_SESSION_NAME: ${{ inputs.session-name }}
         INPUT_NO_VERIFY_SSL: ${{ inputs.no-verify-ssl }}
       run: |
         OUTPUT_FILE="${RUNNER_TEMP}/ambient-session-output.json"
@@ -137,6 +142,9 @@ runs:
         fi
         if [ "$INPUT_WAIT" = "true" ]; then
           ARGS+=(--wait)
+        fi
+        if [ -n "$INPUT_SESSION_NAME" ]; then
+          ARGS+=(--session-name "$INPUT_SESSION_NAME")
         fi
         if [ "$INPUT_NO_VERIFY_SSL" = "true" ]; then
           ARGS+=(--no-verify-ssl)
