@@ -160,6 +160,7 @@ def main():
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--poll-interval", type=int, default=15)
     parser.add_argument("--no-verify-ssl", action="store_true")
+    parser.add_argument("--poll-timeout", type=int, default=60, help="Max minutes to poll before giving up (only with --wait)")
     parser.add_argument("--output-file", default="")
 
     args = parser.parse_args()
@@ -229,7 +230,7 @@ def main():
             project=args.project,
             session_name=session_name,
             poll_interval=args.poll_interval,
-            timeout_minutes=args.timeout,
+            timeout_minutes=args.poll_timeout,
             verify_ssl=verify_ssl,
         )
         output["session_phase"] = poll_result.get("phase", "")
