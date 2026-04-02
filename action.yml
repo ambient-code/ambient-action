@@ -36,9 +36,9 @@ inputs:
     required: false
     default: ''
   timeout:
-    description: 'Session timeout in minutes'
+    description: 'Session inactivity timeout in seconds — auto-stops after this duration of inactivity'
     required: false
-    default: '30'
+    default: '0'
   model:
     description: 'Model override (e.g. claude-sonnet-4-20250514)'
     required: false
@@ -112,7 +112,7 @@ runs:
           --api-token "$INPUT_API_TOKEN"
           --project "$INPUT_PROJECT"
           --prompt-file "$PROMPT_FILE"
-          --timeout "${INPUT_TIMEOUT:-30}"
+          --timeout "${INPUT_TIMEOUT:-0}"
           --poll-interval "${INPUT_POLL_INTERVAL:-15}"
           --output-file "$OUTPUT_FILE"
         )

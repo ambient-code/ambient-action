@@ -34,7 +34,7 @@ def create_session(
     workflow: dict | None = None,
     labels: dict | None = None,
     env_vars: dict | None = None,
-    timeout: int = 30,
+    timeout: int = 0,
     model: str = "",
     verify_ssl: bool = True,
 ) -> dict | None:
@@ -54,7 +54,7 @@ def create_session(
     if env_vars:
         body["environmentVariables"] = env_vars
     if timeout:
-        body["timeout"] = timeout * 60
+        body["inactivityTimeout"] = timeout
     if model:
         body["llmSettings"] = {"model": model}
 
@@ -155,7 +155,7 @@ def main():
     parser.add_argument("--workflow", default="")
     parser.add_argument("--labels", default="")
     parser.add_argument("--env-vars", default="")
-    parser.add_argument("--timeout", type=int, default=30)
+    parser.add_argument("--timeout", type=int, default=0)
     parser.add_argument("--model", default="")
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--poll-interval", type=int, default=15)
