@@ -172,6 +172,7 @@ def create_session(
     labels: dict | None = None,
     env_vars: dict | None = None,
     timeout: int = 0,
+    stop_on_run_finished: bool = False,
     model: str = "",
     verify_ssl: bool = True,
 ) -> dict | None:
@@ -192,6 +193,8 @@ def create_session(
         body["environmentVariables"] = env_vars
     if timeout:
         body["inactivityTimeout"] = timeout
+    if stop_on_run_finished:
+        body["stopOnRunFinished"] = True
     if model:
         body["llmSettings"] = {"model": model}
 
@@ -218,6 +221,9 @@ def create_session(
         return None
 
 
+AGENT_DONE_STATUSES = {"idle", "waiting_input"}
+
+
 def poll_session(
     api_url: str,
     api_token: str,
@@ -227,7 +233,12 @@ def poll_session(
     timeout_minutes: int = 30,
     verify_ssl: bool = True,
 ) -> dict:
-    """Poll session status until a terminal phase is reached."""
+    """Poll session until the agent is done or session reaches a terminal phase.
+
+    Exits when:
+    - Session phase is terminal (Completed, Error, Timeout, Stopped, Failed)
+    - Agent status is idle or waiting_input (agent finished its run, session still alive)
+    """
     url = f"{api_url.rstrip('/')}/projects/{project}/agentic-sessions/{session_name}"
     headers = {"Authorization": f"Bearer {api_token}"}
     deadline = time.time() + (timeout_minutes * 60) + 120
@@ -237,6 +248,7 @@ def poll_session(
         f"(timeout: {timeout_minutes}m + 2m buffer)"
     )
 
+    seen_working = False
     while time.time() < deadline:
         try:
             resp = requests.get(
@@ -247,14 +259,30 @@ def poll_session(
 
             status = data.get("status", {})
             phase = status.get("phase", "Unknown")
+            agent_status = status.get("agentStatus", "")
 
-            logger.info(f"Session {session_name}: phase={phase}")
+            logger.info(f"Session {session_name}: phase={phase}, agentStatus={agent_status}")
 
             if phase in TERMINAL_PHASES:
                 return {
                     "phase": phase,
+                    "agentStatus": agent_status,
                     "result": status.get("result", ""),
                     "completionTime": status.get("completionTime", ""),
+                }
+
+            # Track if the agent has been active at least once
+            if agent_status and agent_status not in AGENT_DONE_STATUSES:
+                seen_working = True
+
+            # Only exit on idle/waiting_input after the agent has been working
+            if seen_working and agent_status in AGENT_DONE_STATUSES:
+                logger.info(f"Session {session_name}: agent is {agent_status}, done waiting")
+                return {
+                    "phase": phase,
+                    "agentStatus": agent_status,
+                    "result": status.get("result", ""),
+                    "completionTime": "",
                 }
 
         except requests.RequestException as e:
@@ -263,7 +291,7 @@ def poll_session(
         time.sleep(poll_interval)
 
     logger.error("Polling timed out waiting for session completion")
-    return {"phase": "PollTimeout", "result": "", "completionTime": ""}
+    return {"phase": "PollTimeout", "agentStatus": "", "result": "", "completionTime": ""}
 
 
 def write_output(output_file: str, data: dict) -> None:
@@ -294,6 +322,7 @@ def main():
     parser.add_argument("--labels", default="")
     parser.add_argument("--env-vars", default="")
     parser.add_argument("--timeout", type=int, default=0)
+    parser.add_argument("--stop-on-run-finished", action="store_true")
     parser.add_argument("--model", default="")
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--poll-interval", type=int, default=15)
@@ -377,6 +406,7 @@ def main():
         labels=labels,
         env_vars=env_vars,
         timeout=args.timeout,
+        stop_on_run_finished=args.stop_on_run_finished,
         model=args.model,
         verify_ssl=verify_ssl,
     )
