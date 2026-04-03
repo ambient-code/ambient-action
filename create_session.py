@@ -26,6 +26,98 @@ logger = logging.getLogger(__name__)
 TERMINAL_PHASES = {"Completed", "Error", "Timeout", "Stopped", "Failed"}
 
 
+def get_session_phase(
+    api_url: str,
+    api_token: str,
+    project: str,
+    session_name: str,
+    verify_ssl: bool = True,
+) -> str | None:
+    """Get the current phase of a session. Returns None if session not found."""
+    url = f"{api_url.rstrip('/')}/projects/{project}/agentic-sessions/{session_name}"
+    try:
+        resp = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {api_token}"},
+            timeout=15,
+            verify=verify_ssl,
+        )
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return resp.json().get("status", {}).get("phase", "Unknown")
+    except requests.RequestException as e:
+        logger.error(f"Failed to get session {session_name}: {e}")
+        return None
+
+
+def start_session(
+    api_url: str,
+    api_token: str,
+    project: str,
+    session_name: str,
+    verify_ssl: bool = True,
+) -> bool:
+    """Start/restart a stopped session."""
+    url = f"{api_url.rstrip('/')}/projects/{project}/agentic-sessions/{session_name}/start"
+    try:
+        resp = requests.post(
+            url,
+            headers={"Authorization": f"Bearer {api_token}"},
+            timeout=30,
+            verify=verify_ssl,
+        )
+        resp.raise_for_status()
+        logger.info(f"Session {session_name} start requested")
+        return True
+    except requests.RequestException as e:
+        logger.error(f"Failed to start session {session_name}: {e}")
+        return False
+
+
+def ensure_session_running(
+    api_url: str,
+    api_token: str,
+    project: str,
+    session_name: str,
+    verify_ssl: bool = True,
+    max_wait: int = 60,
+) -> bool:
+    """Ensure session is running. Starts it if stopped, waits for Running phase."""
+    phase = get_session_phase(api_url, api_token, project, session_name, verify_ssl)
+
+    if phase is None:
+        logger.error(f"Session {session_name} not found")
+        return False
+
+    if phase == "Running":
+        return True
+
+    if phase in TERMINAL_PHASES:
+        logger.info(f"Session {session_name} is {phase}, starting...")
+        if not start_session(api_url, api_token, project, session_name, verify_ssl):
+            return False
+
+        # Wait for session to reach Running
+        deadline = time.time() + max_wait
+        while time.time() < deadline:
+            time.sleep(3)
+            phase = get_session_phase(api_url, api_token, project, session_name, verify_ssl)
+            if phase == "Running":
+                logger.info(f"Session {session_name} is now Running")
+                return True
+            if phase is None:
+                logger.error(f"Session {session_name} disappeared")
+                return False
+            logger.info(f"Waiting for session {session_name} to start (phase: {phase})")
+
+        logger.error(f"Timed out waiting for session {session_name} to start")
+        return False
+
+    logger.info(f"Session {session_name} is in phase {phase}, waiting...")
+    return True
+
+
 def send_message(
     api_url: str,
     api_token: str,
@@ -34,7 +126,10 @@ def send_message(
     message: str,
     verify_ssl: bool = True,
 ) -> bool:
-    """Send a message to an existing session via AG-UI run endpoint."""
+    """Send a message to an existing session. Starts the session first if stopped."""
+    if not ensure_session_running(api_url, api_token, project, session_name, verify_ssl):
+        return False
+
     url = f"{api_url.rstrip('/')}/projects/{project}/agentic-sessions/{session_name}/agui/run"
 
     body = {
