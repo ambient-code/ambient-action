@@ -75,6 +75,9 @@ outputs:
   session-uid:
     description: 'Created session UID'
     value: ${{ steps.run.outputs.session-uid }}
+  session-url:
+    description: 'URL to the session in the Ambient UI'
+    value: ${{ steps.run.outputs.session-url }}
   session-phase:
     description: 'Final session phase (only set when wait is true)'
     value: ${{ steps.run.outputs.session-phase }}
@@ -151,6 +154,9 @@ runs:
         fi
         if [ -n "$INPUT_SESSION_NAME" ]; then
           ARGS+=(--session-name "$INPUT_SESSION_NAME")
+          # Pre-set session-url for reuse case (output file may not have it)
+          BASE_URL=$(echo "$INPUT_API_URL" | sed 's|/api$||; s|/api/$||')
+          echo "session-url=${BASE_URL}/projects/${INPUT_PROJECT}/sessions/${INPUT_SESSION_NAME}" >> "$GITHUB_OUTPUT"
         fi
         if [ "$INPUT_NO_VERIFY_SSL" = "true" ]; then
           ARGS+=(--no-verify-ssl)
@@ -167,6 +173,15 @@ runs:
           echo "session-name=$SESSION_NAME" >> "$GITHUB_OUTPUT"
           echo "session-uid=$SESSION_UID" >> "$GITHUB_OUTPUT"
           echo "session-phase=$SESSION_PHASE" >> "$GITHUB_OUTPUT"
+
+          # Construct session URL from API URL
+          if [ -n "$SESSION_NAME" ]; then
+            BASE_URL=$(echo "$INPUT_API_URL" | sed 's|/api$||; s|/api/$||')
+            echo "session-url=${BASE_URL}/projects/${INPUT_PROJECT}/sessions/${SESSION_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "session-url=" >> "$GITHUB_OUTPUT"
+          fi
+
           {
             echo "session-result<<GHEOF"
             echo "$SESSION_RESULT"
@@ -175,6 +190,7 @@ runs:
         else
           echo "session-name=" >> "$GITHUB_OUTPUT"
           echo "session-uid=" >> "$GITHUB_OUTPUT"
+          echo "session-url=" >> "$GITHUB_OUTPUT"
           echo "session-phase=CreateFailed" >> "$GITHUB_OUTPUT"
           echo "session-result=" >> "$GITHUB_OUTPUT"
         fi
