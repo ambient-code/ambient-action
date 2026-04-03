@@ -248,6 +248,7 @@ def poll_session(
         f"(timeout: {timeout_minutes}m + 2m buffer)"
     )
 
+    seen_working = False
     while time.time() < deadline:
         try:
             resp = requests.get(
@@ -270,7 +271,12 @@ def poll_session(
                     "completionTime": status.get("completionTime", ""),
                 }
 
-            if agent_status in AGENT_DONE_STATUSES:
+            # Track if the agent has been active at least once
+            if agent_status and agent_status not in AGENT_DONE_STATUSES:
+                seen_working = True
+
+            # Only exit on idle/waiting_input after the agent has been working
+            if seen_working and agent_status in AGENT_DONE_STATUSES:
                 logger.info(f"Session {session_name}: agent is {agent_status}, done waiting")
                 return {
                     "phase": phase,
