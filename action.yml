@@ -43,6 +43,10 @@ inputs:
     description: 'Session inactivity timeout in seconds — auto-stops after this duration of inactivity'
     required: false
     default: '0'
+  stop-on-run-finished:
+    description: 'Stop the session automatically when the agent finishes its run'
+    required: false
+    default: 'false'
   model:
     description: 'Model override (e.g. claude-sonnet-4-20250514)'
     required: false
@@ -105,6 +109,7 @@ runs:
         INPUT_LABELS: ${{ inputs.labels }}
         INPUT_ENV_VARS: ${{ inputs.environment-variables }}
         INPUT_TIMEOUT: ${{ inputs.timeout }}
+        INPUT_STOP_ON_RUN_FINISHED: ${{ inputs.stop-on-run-finished }}
         INPUT_MODEL: ${{ inputs.model }}
         INPUT_WORKFLOW: ${{ inputs.workflow }}
         INPUT_WAIT: ${{ inputs.wait }}
@@ -151,6 +156,9 @@ runs:
         fi
         if [ "$INPUT_WAIT" = "true" ]; then
           ARGS+=(--wait)
+        fi
+        if [ "$INPUT_STOP_ON_RUN_FINISHED" = "true" ]; then
+          ARGS+=(--stop-on-run-finished)
         fi
         if [ -n "$INPUT_SESSION_NAME" ]; then
           ARGS+=(--session-name "$INPUT_SESSION_NAME")
