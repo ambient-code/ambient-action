@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Create an Ambient Code Platform session via the backend API.
+Create an Ambient Code Platform session or send a message to an existing one.
 
-Supports two modes:
-- Fire-and-forget: create and exit immediately
-- Wait-for-completion: create then poll until terminal phase
+Supports three modes:
+- Create + fire-and-forget: create session and exit immediately
+- Create + wait: create session then poll until terminal phase
+- Send message: send a message to an existing session via AG-UI
 """
 
 import argparse
@@ -12,6 +13,7 @@ import json
 import logging
 import sys
 import time
+import uuid
 
 import requests
 
@@ -22,6 +24,141 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TERMINAL_PHASES = {"Completed", "Error", "Timeout", "Stopped", "Failed"}
+
+
+def get_session_phase(
+    api_url: str,
+    api_token: str,
+    project: str,
+    session_name: str,
+    verify_ssl: bool = True,
+) -> str | None:
+    """Get the current phase of a session. Returns None if session not found."""
+    url = f"{api_url.rstrip('/')}/projects/{project}/agentic-sessions/{session_name}"
+    try:
+        resp = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {api_token}"},
+            timeout=15,
+            verify=verify_ssl,
+        )
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return resp.json().get("status", {}).get("phase", "Unknown")
+    except requests.RequestException as e:
+        logger.error(f"Failed to get session {session_name}: {e}")
+        return None
+
+
+def start_session(
+    api_url: str,
+    api_token: str,
+    project: str,
+    session_name: str,
+    verify_ssl: bool = True,
+) -> bool:
+    """Start/restart a stopped session."""
+    url = f"{api_url.rstrip('/')}/projects/{project}/agentic-sessions/{session_name}/start"
+    try:
+        resp = requests.post(
+            url,
+            headers={"Authorization": f"Bearer {api_token}"},
+            timeout=30,
+            verify=verify_ssl,
+        )
+        resp.raise_for_status()
+        logger.info(f"Session {session_name} start requested")
+        return True
+    except requests.RequestException as e:
+        logger.error(f"Failed to start session {session_name}: {e}")
+        return False
+
+
+def ensure_session_running(
+    api_url: str,
+    api_token: str,
+    project: str,
+    session_name: str,
+    verify_ssl: bool = True,
+    max_wait: int = 60,
+) -> bool:
+    """Ensure session is running. Starts it if stopped, waits for Running phase."""
+    phase = get_session_phase(api_url, api_token, project, session_name, verify_ssl)
+
+    if phase is None:
+        logger.error(f"Session {session_name} not found")
+        return False
+
+    if phase == "Running":
+        return True
+
+    if phase in TERMINAL_PHASES:
+        logger.info(f"Session {session_name} is {phase}, starting...")
+        if not start_session(api_url, api_token, project, session_name, verify_ssl):
+            return False
+
+    # Wait for session to reach Running (handles both restart and pending/starting phases)
+    deadline = time.time() + max_wait
+    while time.time() < deadline:
+        phase = get_session_phase(api_url, api_token, project, session_name, verify_ssl)
+        if phase == "Running":
+            logger.info(f"Session {session_name} is now Running")
+            return True
+        if phase is None:
+            logger.error(f"Session {session_name} disappeared")
+            return False
+        logger.info(f"Waiting for session {session_name} to reach Running (phase: {phase})")
+        time.sleep(3)
+
+    logger.error(f"Timed out waiting for session {session_name} to reach Running")
+    return False
+
+
+def send_message(
+    api_url: str,
+    api_token: str,
+    project: str,
+    session_name: str,
+    message: str,
+    verify_ssl: bool = True,
+    startup_timeout: int = 120,
+) -> bool:
+    """Send a message to an existing session. Starts the session first if stopped."""
+    if not ensure_session_running(api_url, api_token, project, session_name, verify_ssl, max_wait=startup_timeout):
+        return False
+
+    url = f"{api_url.rstrip('/')}/projects/{project}/agentic-sessions/{session_name}/agui/run"
+
+    body = {
+        "threadId": session_name,
+        "runId": str(uuid.uuid4()),
+        "messages": [
+            {
+                "id": str(uuid.uuid4()),
+                "role": "user",
+                "content": message,
+            }
+        ],
+    }
+
+    try:
+        resp = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {api_token}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+            timeout=30,
+            verify=verify_ssl,
+        )
+        resp.raise_for_status()
+        logger.info(f"Message sent to session {session_name}")
+        return True
+    except requests.RequestException as e:
+        logger.error(f"Failed to send message to session {session_name}: {e}")
+        return False
 
 
 def create_session(
@@ -143,13 +280,14 @@ def write_output(output_file: str, data: dict) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Create an Ambient Code Platform session."
+        description="Create an Ambient Code Platform session or send a message to an existing one."
     )
     parser.add_argument("--api-url", required=True)
     parser.add_argument("--api-token", required=True)
     parser.add_argument("--project", required=True)
     parser.add_argument("--prompt", default="")
     parser.add_argument("--prompt-file", default="", help="Read prompt from file (preferred over --prompt for multi-line content)")
+    parser.add_argument("--session-name", default="", help="Existing session to send a message to (skips creation)")
     parser.add_argument("--display-name", default="")
     parser.add_argument("--repos", default="")
     parser.add_argument("--workflow", default="")
@@ -160,6 +298,7 @@ def main():
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--poll-interval", type=int, default=15)
     parser.add_argument("--no-verify-ssl", action="store_true")
+    parser.add_argument("--poll-timeout", type=int, default=60, help="Max minutes to poll before giving up (only with --wait)")
     parser.add_argument("--output-file", default="")
 
     args = parser.parse_args()
@@ -182,6 +321,46 @@ def main():
         import urllib3
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+    # Mode: send message to existing session
+    if args.session_name:
+        success = send_message(
+            api_url=args.api_url,
+            api_token=args.api_token,
+            project=args.project,
+            session_name=args.session_name,
+            message=prompt,
+            verify_ssl=verify_ssl,
+            startup_timeout=args.poll_timeout * 60,
+        )
+
+        output = {
+            "session_name": args.session_name,
+            "session_uid": "",
+            "session_phase": "MessageSent" if success else "MessageFailed",
+            "session_result": "",
+        }
+
+        if not success:
+            write_output(args.output_file, output)
+            sys.exit(1)
+
+        if args.wait:
+            poll_result = poll_session(
+                api_url=args.api_url,
+                api_token=args.api_token,
+                project=args.project,
+                session_name=args.session_name,
+                poll_interval=args.poll_interval,
+                timeout_minutes=args.poll_timeout,
+                verify_ssl=verify_ssl,
+            )
+            output["session_phase"] = poll_result.get("phase", "")
+            output["session_result"] = poll_result.get("result", "")
+
+        write_output(args.output_file, output)
+        return
+
+    # Mode: create new session
     repos = json.loads(args.repos) if args.repos else None
     workflow = json.loads(args.workflow) if args.workflow else None
     labels = json.loads(args.labels) if args.labels else None
@@ -229,7 +408,7 @@ def main():
             project=args.project,
             session_name=session_name,
             poll_interval=args.poll_interval,
-            timeout_minutes=args.timeout,
+            timeout_minutes=args.poll_timeout,
             verify_ssl=verify_ssl,
         )
         output["session_phase"] = poll_result.get("phase", "")
