@@ -59,6 +59,10 @@ inputs:
     description: 'Seconds between status polls when waiting'
     required: false
     default: '15'
+  poll-timeout:
+    description: 'Max minutes to poll before giving up when wait is true'
+    required: false
+    default: '60'
   no-verify-ssl:
     description: 'Disable SSL certificate verification (for self-signed certs)'
     required: false
@@ -102,6 +106,7 @@ runs:
         INPUT_WORKFLOW: ${{ inputs.workflow }}
         INPUT_WAIT: ${{ inputs.wait }}
         INPUT_POLL_INTERVAL: ${{ inputs.poll-interval }}
+        INPUT_POLL_TIMEOUT: ${{ inputs.poll-timeout }}
         INPUT_SESSION_NAME: ${{ inputs.session-name }}
         INPUT_NO_VERIFY_SSL: ${{ inputs.no-verify-ssl }}
       run: |
@@ -119,6 +124,7 @@ runs:
           --prompt-file "$PROMPT_FILE"
           --timeout "${INPUT_TIMEOUT:-0}"
           --poll-interval "${INPUT_POLL_INTERVAL:-15}"
+          --poll-timeout "${INPUT_POLL_TIMEOUT:-60}"
           --output-file "$OUTPUT_FILE"
         )
 

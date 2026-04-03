@@ -98,24 +98,21 @@ def ensure_session_running(
         if not start_session(api_url, api_token, project, session_name, verify_ssl):
             return False
 
-        # Wait for session to reach Running
-        deadline = time.time() + max_wait
-        while time.time() < deadline:
-            time.sleep(3)
-            phase = get_session_phase(api_url, api_token, project, session_name, verify_ssl)
-            if phase == "Running":
-                logger.info(f"Session {session_name} is now Running")
-                return True
-            if phase is None:
-                logger.error(f"Session {session_name} disappeared")
-                return False
-            logger.info(f"Waiting for session {session_name} to start (phase: {phase})")
+    # Wait for session to reach Running (handles both restart and pending/starting phases)
+    deadline = time.time() + max_wait
+    while time.time() < deadline:
+        phase = get_session_phase(api_url, api_token, project, session_name, verify_ssl)
+        if phase == "Running":
+            logger.info(f"Session {session_name} is now Running")
+            return True
+        if phase is None:
+            logger.error(f"Session {session_name} disappeared")
+            return False
+        logger.info(f"Waiting for session {session_name} to reach Running (phase: {phase})")
+        time.sleep(3)
 
-        logger.error(f"Timed out waiting for session {session_name} to start")
-        return False
-
-    logger.info(f"Session {session_name} is in phase {phase}, waiting...")
-    return True
+    logger.error(f"Timed out waiting for session {session_name} to reach Running")
+    return False
 
 
 def send_message(
