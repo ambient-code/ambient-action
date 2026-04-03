@@ -122,9 +122,10 @@ def send_message(
     session_name: str,
     message: str,
     verify_ssl: bool = True,
+    startup_timeout: int = 120,
 ) -> bool:
     """Send a message to an existing session. Starts the session first if stopped."""
-    if not ensure_session_running(api_url, api_token, project, session_name, verify_ssl):
+    if not ensure_session_running(api_url, api_token, project, session_name, verify_ssl, max_wait=startup_timeout):
         return False
 
     url = f"{api_url.rstrip('/')}/projects/{project}/agentic-sessions/{session_name}/agui/run"
@@ -329,6 +330,7 @@ def main():
             session_name=args.session_name,
             message=prompt,
             verify_ssl=verify_ssl,
+            startup_timeout=args.poll_timeout * 60,
         )
 
         output = {
