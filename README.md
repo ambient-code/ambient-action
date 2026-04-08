@@ -9,7 +9,7 @@ A GitHub Action that creates sessions on the [Ambient Code Platform](https://git
 Create a session and continue immediately:
 
 ```yaml
-- uses: ambient-code/ambient-action@v2
+- uses: ambient-code/ambient-action@v0.0.2
   with:
     api-url: ${{ secrets.AMBIENT_API_URL }}
     api-token: ${{ secrets.AMBIENT_BOT_TOKEN }}
@@ -23,7 +23,7 @@ Create a session and continue immediately:
 Create a session and wait for results:
 
 ```yaml
-- uses: ambient-code/ambient-action@v2
+- uses: ambient-code/ambient-action@v0.0.2
   id: session
   with:
     api-url: ${{ secrets.AMBIENT_API_URL }}
@@ -42,7 +42,7 @@ Create a session and wait for results:
 ### With a workflow
 
 ```yaml
-- uses: ambient-code/ambient-action@v2
+- uses: ambient-code/ambient-action@v0.0.2
   with:
     api-url: ${{ secrets.AMBIENT_API_URL }}
     api-token: ${{ secrets.AMBIENT_BOT_TOKEN }}
@@ -64,7 +64,7 @@ jobs:
     if: contains(github.event.comment.body, '/ambient')
     runs-on: ubuntu-latest
     steps:
-      - uses: ambient-code/ambient-action@v2
+      - uses: ambient-code/ambient-action@v0.0.2
         with:
           api-url: ${{ secrets.AMBIENT_API_URL }}
           api-token: ${{ secrets.AMBIENT_BOT_TOKEN }}
